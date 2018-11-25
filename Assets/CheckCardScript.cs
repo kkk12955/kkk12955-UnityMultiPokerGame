@@ -2,8 +2,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Networking;
 
-public class CheckCardScipt : MonoBehaviour {
+public class CheckCardScipt : NetworkBehaviour{
 
     public bool IsPair(int a , int b)
     {
@@ -126,6 +127,20 @@ public class CheckCardScipt : MonoBehaviour {
 
         return false;
         
+    }
+
+    public String Check5(int a , int b , int c , int d , int e) 
+    {
+        if (IsStraightFlush(a, b, c, d, e)) return "同花順";
+        if (IsQuad(a, b, c, d, e)) return "鐵支";
+        if (IsStraight(a, b, c, d, e)) return "順子";
+        if (IsFullhouse(a, b, c, d, e)) return "胡蘆";
+
+
+
+
+
+        return null;
     }
 
 

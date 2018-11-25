@@ -1,10 +1,14 @@
 ﻿
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+
+
+
 
 public class Player : NetworkBehaviour
 {
@@ -18,18 +22,23 @@ public class Player : NetworkBehaviour
         end
     }
 
+    GM gm;
     public Text txt_play1;
     public Text txt_play2;
     public Text txt_play3;
     public Text txt_play4;
-    GM gm;
-    public int[] Cards = new int[13]; //這邊應該要修正使用Sync
     public Button btn_lead;
     public Button btn_pass;
-
-    public Text txtSysSmg;
-
+    public Text txtSysMsg;
+    public Text txtTipMsg;
     public ArrayList card_selectlead;
+    public ArrayList Mycard;
+    public SyncListCardItem HaveCards = new SyncListCardItem(); //手牌
+    public GameObject[] image_cards = new GameObject[13];
+
+
+    [SyncVar]
+    public bool LeadOver = false;
 
     [SyncVar]
     public Process process = Process.start;
@@ -38,16 +47,18 @@ public class Player : NetworkBehaviour
     public string SysMsg;
 
     [SyncVar]
+    public string TipMsg;
+
+    [SyncVar]
     public bool IsGameStart = false;
-    
 
 
-    public static GameObject[] image_cards = new GameObject[13];
 
 
 
     void Start()
     {
+
 
         if (isServer)
         {
@@ -58,11 +69,13 @@ public class Player : NetworkBehaviour
         if (isLocalPlayer)
         {
             card_selectlead = new ArrayList();
+            Mycard = new ArrayList();
             btn_lead = GameObject.Find("btn_lead").GetComponent<Button>();
             btn_pass = GameObject.Find("btn_pass").GetComponent<Button>();
             btn_lead.onClick.AddListener(() => Cmdplayerlead());
             btn_pass.onClick.AddListener(() => Cmdplayerpass());
-            txtSysSmg = GameObject.Find("txtSysMsg").GetComponent<Text>();
+            txtSysMsg = GameObject.Find("txtSysMsg").GetComponent<Text>();
+            txtTipMsg = GameObject.Find("txtTipMsg").GetComponent<Text>();
 
 
         }
@@ -78,21 +91,35 @@ public class Player : NetworkBehaviour
         if (isLocalPlayer)
         {
 
-            txtSysSmg.text = SysMsg;
+            txtSysMsg.text = SysMsg;
+            txtTipMsg.text = TipMsg;
 
             if (IsGameStart)
             {
-                Array.Sort(Cards);
-
-                for (int i = 0; i < 13; i++)
+                for (int i = 0; i < HaveCards.Count; i++)
                 {
-                    image_cards[i] = GameObject.Find(Convert.ToString(i + 1));
-                    image_cards[i].SetActive(true);
-                    image_cards[i].GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(Convert.ToString(Cards[i]));
-                    image_cards[i].AddComponent<Click_Card>();
-
+                    Mycard.Add(HaveCards.GetItem(i).UID);
 
                 }
+
+                Mycard.Sort();
+
+                //更新UI
+                Update_UI();
+
+
+
+                IsGameStart = false;
+            }
+
+            if (LeadOver)
+            {
+
+
+                //更新UI
+                Update_UI();
+
+                LeadOver = false;
             }
 
                 
@@ -101,30 +128,39 @@ public class Player : NetworkBehaviour
     }
 
 
+    [Server]
+    public void Server_AddCard(CardStruct cards)
+    {
+        //摸牌
+        HaveCards.Add(cards);
+
+    }
+
 
     [Command]
     public void Cmdplayerlead()
     {
-        int Card_lead_Count = 0;
+        UnityEngine.Debug.Log("按下lead");
 
-        for (int i = 0; i < 13; i++)
+        if(this.process == Process.action)
         {
-            if (image_cards[i].GetComponent<Click_Card>().onClick)
+
+            int Card_lead_Count = 0;
+
+            for (int i = 0; i < 13; i++)
             {
-                Card_lead_Count++;
-                card_selectlead.Add(Cards[i]);
+                if (image_cards[i].GetComponent<Click_Card>().onClick)
+                {
+                    Card_lead_Count++;
+                    card_selectlead.Add(Mycard[i]);
+                    UnityEngine.Debug.Log("選取數量為:"+Card_lead_Count);
+                }
             }
-        }
+            gm.CheckCard(card_selectlead,Card_lead_Count);
+            card_selectlead.Clear();
+            
 
-        if (Card_lead_Count == 0 && Card_lead_Count > 5 && Card_lead_Count == 4)
-        {
-            SysMsg = "出牌不符合";
-        }else
-        {
-            gm.checkCard(card_selectlead);
         }
-
-        
             
     }
 
@@ -136,6 +172,31 @@ public class Player : NetworkBehaviour
     public void SetProcess(Process process)
     {
         this.process = process;
+    }
+
+
+    //更新UI
+    public void Update_UI()
+    {
+        //排序
+
+
+
+
+            for (int i = 0; i < Mycard.Count; i++)
+        {
+
+            image_cards[i] = GameObject.Find(Convert.ToString(i + 1));
+            image_cards[i].SetActive(true);
+            image_cards[i].GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(Convert.ToString(Mycard[i]));
+            image_cards[i].AddComponent<Click_Card>();
+
+        }
+
+        for(int i = Mycard.Count; i < 13; i++)
+        {
+            image_cards[i].SetActive(false);
+        }
     }
 
 

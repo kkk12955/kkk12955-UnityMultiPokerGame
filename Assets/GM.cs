@@ -3,22 +3,25 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 using System.Text.RegularExpressions;
+using UnityEngine.Networking;
 
-
-public class GM : MonoBehaviour
+public class GM : NetworkBehaviour
 {
 
 
     const int NUMBER_OF_CARDS = 52;
     int[] Cards = new int[NUMBER_OF_CARDS];
+    int[] playerlead;
     public List<Player> allPlayer = new List<Player>();
 
     public Round round = Round.non;
     public Process process = Process.start;
     public bool firstlead = true;
     public bool roundfirstlead = true;
+    GameObject CardLeadShow;
+    SyncListCardItem CardList = new SyncListCardItem();
 
-    CheckCardScipt cks = new CheckCardScipt();
+
 
     public enum Round
     {
@@ -58,37 +61,65 @@ public class GM : MonoBehaviour
 
     //驗證出牌規則
 
-    public void checkCard(ArrayList playerCards)
+    public void CheckCard(ArrayList playerCards,int count)
     {
+
+        if (count < 1 || count > 5 || count == 4) LeadError(); //出牌數量不對
+
+        playerlead = new int[playerCards.Count];
+
+        //第一次出牌
         if (roundfirstlead)
         {
-
-            if (checkPlum3(playerCards))
-            {
-
-            }
-            else
+            //驗證出牌含有梅花3
+            if (!CheckPlum3(playerCards))
             {
                 foreach (Player pl in allPlayer)
                 {
-                    if(pl.process == Player.Process.action)
-                    {
-                        pl.SysMsg = "請先出梅花3";
-                    }
+                    if (pl.process == Player.Process.action) pl.TipMsg = "請先出梅花3";
                 }
-                    
             }
 
 
+            //驗證牌組
+            if (GmCheck(playerCards, count))
+            {
 
 
+                CardLeadShow.SetActive(true);
 
+                for (int i = 0; i > 5; i++)
+                {
+                    if (i >= playerCards.Count) GameObject.Find("x" + (i + 1)).GetComponent<SpriteRenderer>().sprite = null;
+                    GameObject.Find("x"+(i+1)).GetComponent<SpriteRenderer>().sprite = Resources.Load<Sprite>(Convert.ToString(playerCards[i]));
+                    
+                }
+                
+
+
+                if (allPlayer[0].process == Player.Process.action)
+                {
+                    process = Process.p2Action;
+                }
+                else if (allPlayer[1].process == Player.Process.action)
+                {
+                    process = Process.p3Action;
+                }
+                else if (allPlayer[2].process == Player.Process.action)
+                {
+                    process = Process.p4Action;
+                }
+                else if (allPlayer[3].process == Player.Process.action)
+                {
+                    process = Process.p1Action;
+                }
+            }
+            else
+            {
+                LeadError();
+            }
+            
         }
-        else if(firstlead)
-        {
-
-        }
-
 
 
     }
@@ -97,7 +128,10 @@ public class GM : MonoBehaviour
     void Start()
     {
         process = Process.waitLogin;
-        
+        Instantiate(CardLeadShow, transform.position, transform.rotation);
+        CardLeadShow.SetActive(false);
+
+
     }
 
     void Update()
@@ -121,7 +155,7 @@ public class GM : MonoBehaviour
 
 
                 // 重製卡牌
-                for (int i = 0; i < NUMBER_OF_CARDS; i++) Cards[i] = i;
+                for (int i = 0; i < NUMBER_OF_CARDS; i++){ Cards[i] = i; }
 
                 // 進行洗牌
                 for (int i = 0; i < NUMBER_OF_CARDS; i++)
@@ -132,19 +166,26 @@ public class GM : MonoBehaviour
                     Cards[swap_index] = t;
                 }
 
-                //發牌
-                for (int i = 0; i < 13; i++)
-                {
-                    allPlayer[0].Cards[i] = Cards[i];
-                    allPlayer[1].Cards[i] = Cards[13 + i];
-                    allPlayer[2].Cards[i] = Cards[26 + i];
-                    allPlayer[3].Cards[i] = Cards[39 + i];
-
-                }
-
+                // 建立牌庫
+                
                 for (int i = 0; i < NUMBER_OF_CARDS; i++)
                 {
-                    Debug.Log(Cards[i]);
+                    CardStruct card = new CardStruct();
+                    card.UID = Cards[i];
+                    CardList.Add(card);
+
+                    
+                }
+
+                //建立牌庫並發牌
+                for (int i = 0; i < 13; i++)
+                {
+
+                    allPlayer[0].Server_AddCard(CardList.GetItem(i));
+                    allPlayer[1].Server_AddCard(CardList.GetItem(13 + i));
+                    allPlayer[2].Server_AddCard(CardList.GetItem(26 + i));
+                    allPlayer[3].Server_AddCard(CardList.GetItem(39 + i));
+
                 }
 
 
@@ -166,31 +207,29 @@ public class GM : MonoBehaviour
                 }
 
                 Load();
-
+                
                 for (int i = 0; i < NUMBER_OF_CARDS / 4; i++)
                 {
 
-                    if (allPlayer[0].Cards[i] == 8)
+                    if (allPlayer[0].HaveCards.GetItem(i).UID == 8)
                     {
                         process = Process.p1Action;
                     }
-                    else if((allPlayer[1].Cards[i] == 8))
+                    else if (allPlayer[1].HaveCards.GetItem(i).UID == 8)
                     {
                         process = Process.p2Action;
                     }
-                    else if((allPlayer[2].Cards[i] == 8))
+                    else if (allPlayer[2].HaveCards.GetItem(i).UID == 8)
                     {
                         process = Process.p3Action;
                     }
-                    else if((allPlayer[3].Cards[i] == 8))
+                    else if (allPlayer[3].HaveCards.GetItem(i).UID == 8)
                     {
                         process = Process.p4Action;
                     }
 
                 }
-
-
-                    break;
+                 break;
 
             case Process.p1Action:
                 allPlayer[0].SysMsg = "輪到你了!";
@@ -260,16 +299,78 @@ public class GM : MonoBehaviour
         yield return new WaitForSeconds(3);    //注意等待时间的写法
     }
 
+    //提示玩家出牌不符
+    public void LeadError()
+    {
+        foreach (Player pl in allPlayer)
+        {
+            if (pl.process == Player.Process.action)
+            {
+                pl.TipMsg = "出牌不符";
+            }
+        }
+    }
+
 
     //驗證梅花3
 
-    public bool checkPlum3(ArrayList playerCards)
+    public bool CheckPlum3(ArrayList playerCards)
     {
         for(int i = 0; i < playerCards.Count; i++)
         {
-            Debug.Log(playerCards[i]);
+            if ((Int32)playerCards[i] == 8)
+            {
+                return true;
+            }
             
         }
         return false;
     }
+
+    //驗證牌組合法
+
+    public bool GmCheck(ArrayList playerCards, int count)
+    {
+
+        CheckCardScipt checkCardScipt = new CheckCardScipt();
+
+        for (int i = 0; i < playerlead.Length; i++)
+        {
+            playerlead[i] = (int)playerCards[i];
+        }
+
+
+        if (count == 5)
+        {
+            if (checkCardScipt.Check5(playerlead[0], playerlead[1], playerlead[2], playerlead[3], playerlead[4]).Equals("同花順"))
+            {
+                return true;
+            }
+            if (checkCardScipt.Check5(playerlead[0], playerlead[1], playerlead[2], playerlead[3], playerlead[4]).Equals("鐵支"))
+            {
+                return true;
+            }
+            if (checkCardScipt.Check5(playerlead[0], playerlead[1], playerlead[2], playerlead[3], playerlead[4]).Equals("胡蘆"))
+            {
+                return true;
+            }
+            if (checkCardScipt.Check5(playerlead[0], playerlead[1], playerlead[2], playerlead[3], playerlead[4]).Equals("順子"))
+            {
+                return true;
+            }
+
+            return false;
+        }else if(count == 2)
+        {
+            if (checkCardScipt.IsPair(playerlead[0], playerlead[1])) return true;
+            return false;
+        }else if(count == 1)
+        {
+            return true;
+        }
+        return false;
+    }
+
+
+
 }
